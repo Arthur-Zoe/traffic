@@ -102,6 +102,16 @@ def test_flexible_checkpoint_skips_classifier_mismatch() -> None:
     assert info["classifier_skipped"]
 
 
+@pytest.mark.parametrize("model_name", ["convnext_tiny", "efficientnet_b2"])
+def test_new_backbones_build_and_skip_classifier(model_name: str) -> None:
+    model = build_model(model_name, 43, pretrained=False)
+    logits = model(torch.zeros(1, 3, 64, 64))
+    assert logits.shape == (1, 43)
+    changed_head = build_model(model_name, 5, pretrained=False)
+    info = load_state_flexible(model, changed_head.state_dict())
+    assert info["classifier_skipped"]
+
+
 def test_inference_inputs_and_bad_type(tmp_path: Path) -> None:
     path = tmp_path / "img.png"
     make_image(path)

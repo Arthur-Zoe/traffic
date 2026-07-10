@@ -296,7 +296,9 @@ class RandomBadWeather:
         self.p = p
         self.severity = severity
         self.max_ops = max(1, int(max_ops))
-        self.rng = random.Random(seed)
+        # DataLoader seeds Python's global RNG independently per worker. Use it
+        # when no explicit seed is requested; fixed seeds retain local state.
+        self.rng = random.Random(seed) if seed is not None else random
         self.corruptions = list(corruptions) if corruptions is not None else list(CORRUPTION_NAMES)
         self.fixed_corruption = fixed_corruption
         for name in self.corruptions:
@@ -315,4 +317,3 @@ class RandomBadWeather:
         for name in self.rng.sample(self.corruptions, k=n_ops):
             out = apply_corruption(out, name, self.severity, rng=self.rng)
         return _rgb(out)
-

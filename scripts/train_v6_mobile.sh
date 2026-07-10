@@ -3,8 +3,13 @@ set -euo pipefail
 
 OUT="${OUT:-outputs/gtsrb_v6_mobile_seed42}"
 OVERWRITE="${OVERWRITE:-0}"
-if [[ -e "$OUT/best.pt" && "$OVERWRITE" != "1" ]]; then
+RESUME="${RESUME:-0}"
+EXTRA_ARGS=()
+if [[ -e "$OUT/last.pt" && "$RESUME" == "1" ]]; then
+  EXTRA_ARGS+=(--resume "$OUT/last.pt")
+elif [[ ( -e "$OUT/best.pt" || -e "$OUT/last.pt" ) && "$OVERWRITE" != "1" ]]; then
   echo "Refusing to overwrite $OUT. Set OVERWRITE=1 to allow."
+  echo "Set RESUME=1 to continue from $OUT/last.pt."
   exit 1
 fi
 
@@ -19,4 +24,5 @@ python train_gtsrb.py \
   --pretrained \
   --class-weight sqrt_inverse \
   --output-dir "$OUT" \
-  "$@" 2>&1 | tee "$OUT/train.log"
+  "${EXTRA_ARGS[@]}" \
+  "$@" 2>&1 | tee -a "$OUT/train.log"

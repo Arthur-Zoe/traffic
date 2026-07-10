@@ -286,7 +286,7 @@ def train(args: argparse.Namespace) -> None:
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(1, args.epochs), eta_min=args.lr * 0.02)
-    scaler = torch.cuda.amp.GradScaler(enabled=(device.type == "cuda"))
+    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda"))
 
     start_epoch = 1
     best_f1 = -1.0
@@ -333,7 +333,7 @@ def train(args: argparse.Namespace) -> None:
             images = images.to(device, non_blocking=True)
             labels_batch = labels_batch.to(device, non_blocking=True)
             optimizer.zero_grad(set_to_none=True)
-            with torch.cuda.amp.autocast(enabled=(device.type == "cuda")):
+            with torch.amp.autocast("cuda", enabled=(device.type == "cuda")):
                 logits = model(images)
                 loss = criterion(logits, labels_batch)
             scaler.scale(loss).backward()

@@ -42,7 +42,9 @@ def build_class_mapping(labels: Iterable[Any], numeric_identity: bool = True) ->
     unique = sorted(set(label_strings), key=lambda x: (not x.lstrip("-").isdigit(), int(x) if x.lstrip("-").isdigit() else x))
     if numeric_identity and all(x.isdigit() for x in unique):
         ids = [int(x) for x in unique]
-        if ids and min(ids) >= 0 and len(set(ids)) == len(ids):
+        # Preserve the familiar GTSRB 0..N-1 mapping, but compact 1-based and
+        # sparse numeric labels so every classifier output has a real class.
+        if ids == list(range(len(ids))):
             class_to_idx = {str(i): i for i in ids}
             idx_to_class = {i: str(i) for i in ids}
             return class_to_idx, idx_to_class
@@ -235,8 +237,11 @@ def inspect_dataset(
             corrupt.append(rel)
 
     duplicate_files = [items for items in hashes.values() if len(items) > 1]
+    duplicate_label_conflicts = [
+        items for items in duplicate_files if len({label for _, label in items if label is not None}) > 1
+    ]
     label_conflicts = {path: sorted(labels) for path, labels in path_labels.items() if len(labels) > 1}
-    class_to_idx, _ = build_class_mapping(class_counts.keys(), numeric_identity=True) if class_counts else ({}, {})
+    class_to_idx, idx_to_class = build_class_mapping(class_counts.keys(), numeric_identity=True) if class_counts else ({}, {})
     return {
         "image_count": len(rows),
         "readable_images": readable,
@@ -250,8 +255,12 @@ def inspect_dataset(
         "channel_modes": dict(modes),
         "duplicate_files": duplicate_files[:30],
         "duplicate_file_groups": len(duplicate_files),
+        "duplicate_label_conflicts": duplicate_label_conflicts[:30],
+        "duplicate_label_conflict_groups": len(duplicate_label_conflicts),
         "label_conflicts": label_conflicts,
-        "recommended_num_classes": (max(class_to_idx.values()) + 1 if class_to_idx else len(class_counts)),
+        "class_to_idx": class_to_idx,
+        "idx_to_class": {str(idx): label for idx, label in idx_to_class.items()},
+        "recommended_num_classes": len(class_to_idx),
         "recommended_batch_size": 24 if readable and max((int(k.split('x')[0]) for k in sizes), default=224) >= 256 else 32,
         "recommended_img_size": 256 if sizes and np_median_size(list(sizes.elements())) >= 96 else 224,
     }

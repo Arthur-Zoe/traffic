@@ -8,7 +8,14 @@ import pytest
 import torch
 
 from augmentations import CORRUPTION_NAMES, RandomBadWeather, apply_corruption
-from datasets import CSVImageDataset, build_class_mapping, resolve_image_path
+from datasets import (
+    CSVImageDataset,
+    FolderImageDataset,
+    UnlabeledImageDataset,
+    build_class_mapping,
+    inspect_dataset,
+    resolve_image_path,
+)
 from inference import TrafficSignClassifier, to_pil_image
 from metrics import compute_macro_f1
 from models import build_model, load_state_flexible
@@ -34,8 +41,38 @@ def test_class_mapping_string_and_numeric() -> None:
     class_to_idx, idx_to_class = build_class_mapping(["stop", "yield", "stop"], numeric_identity=True)
     assert class_to_idx == {"stop": 0, "yield": 1}
     assert idx_to_class[0] == "stop"
-    numeric, _ = build_class_mapping(["0", "42", "3"], numeric_identity=True)
-    assert numeric["42"] == 42
+    numeric, _ = build_class_mapping(["0", "1", "2"], numeric_identity=True)
+    assert numeric == {"0": 0, "1": 1, "2": 2}
+
+
+def test_one_based_and_sparse_numeric_labels_are_compact_and_reversible() -> None:
+    one_based, one_based_inverse = build_class_mapping(["1", "2", "3"], numeric_identity=True)
+    assert one_based == {"1": 0, "2": 1, "3": 2}
+    assert one_based_inverse == {0: "1", 1: "2", 2: "3"}
+    sparse, sparse_inverse = build_class_mapping(["10", "30", "20"], numeric_identity=True)
+    assert sparse == {"10": 0, "20": 1, "30": 2}
+    assert sparse_inverse[2] == "30"
+
+
+def test_folder_unlabeled_and_dataset_inspection(tmp_path: Path) -> None:
+    make_image(tmp_path / "images" / "10" / "a.png")
+    make_image(tmp_path / "images" / "30" / "b.png", color=(20, 80, 140))
+    folder = FolderImageDataset(tmp_path / "images")
+    unlabeled = UnlabeledImageDataset(tmp_path / "images")
+    assert len(folder) == 2
+    assert len(unlabeled) == 2
+
+    csv_path = tmp_path / "train.csv"
+    csv_path.write_text(
+        "image,label\nimages/10/a.png,10\nimages/10/a.png,30\nimages/30/b.png,30\nmissing.png,10\n",
+        encoding="utf-8",
+    )
+    report = inspect_dataset(tmp_path, csv_path, path_col="image", label_col="label")
+    assert report["recommended_num_classes"] == 2
+    assert report["class_to_idx"] == {"10": 0, "30": 1}
+    assert report["missing_images"] == 1
+    assert "images/10/a.png" in report["label_conflicts"]
+    assert report["duplicate_label_conflict_groups"] == 1
 
 
 def test_all_augmentations_small_rgb_and_seed() -> None:
@@ -96,5 +133,8 @@ def test_inference_predict_pil_numpy_path(tmp_path: Path) -> None:
     assert "index" in clf.predict_one(Image.open(img_path))
     assert "index" in clf.predict_one(np.zeros((32, 32, 3), dtype=np.uint8))
     assert "index" in clf.predict_one(img_path)
+    batch = clf.predict([Image.open(img_path), np.zeros((32, 32, 3), dtype=np.uint8)], topk=2)
+    assert isinstance(batch, list) and len(batch) == 2
+    assert len(batch[0]["topk"]) == 2
     with pytest.raises(TypeError):
         clf.predict({"bad": "input"})

@@ -8,6 +8,8 @@ if [[ -e "$OUT/best.pt" && "$OVERWRITE" != "1" ]]; then
   exit 1
 fi
 
+mkdir -p "$OUT"
+
 python train_gtsrb.py \
   --data-dir data/gtsrb \
   --preset v5_img256 \
@@ -17,4 +19,4 @@ python train_gtsrb.py \
   --pretrained \
   --class-weight sqrt_inverse \
   --output-dir "$OUT" \
-  "$@"
+  "$@" 2>&1 | tee "$OUT/train.log"

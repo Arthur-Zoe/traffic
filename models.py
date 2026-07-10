@@ -128,7 +128,11 @@ def load_state_flexible(model: nn.Module, state: dict[str, torch.Tensor]) -> dic
     classifier_skipped = [
         key
         for key in skipped
-        if "classifier" in key or key.endswith(".fc.weight") or key.endswith(".fc.bias") or ".fc." in key
+        if "classifier" in key
+        or key.removeprefix("module.") in {"fc.weight", "fc.bias"}
+        or key.endswith(".fc.weight")
+        or key.endswith(".fc.bias")
+        or ".fc." in key
     ]
     return {
         "loaded": len(loaded),

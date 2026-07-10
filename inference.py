@@ -98,38 +98,51 @@ class TrafficSignClassifier:
         ]
 
     @torch.no_grad()
-    def predict_one(self, item: str | Path | Image.Image | np.ndarray, topk: int | None = None) -> dict[str, Any]:
+    def _predict_images(self, images: list[Image.Image], topk: int | None = None) -> list[dict[str, Any]]:
         self.load()
         assert self.model is not None
         assert self._base_tf is not None
+        if not images:
+            return []
         k = min(topk or self.topk, self.num_classes)
-        img = to_pil_image(item)
-        tensors = [self._base_tf(variant) for variant in self._variants(img)]
+        variants = [self._variants(image) for image in images]
+        variants_per_image = len(variants[0])
+        tensors = [self._base_tf(variant) for image_variants in variants for variant in image_variants]
         batch = torch.stack(tensors, dim=0).to(self.device)
         logits = self.model(batch)
-        probs = torch.softmax(logits, dim=1).mean(dim=0)
-        values, indices = torch.topk(probs, k=k)
-        top = [
-            {
-                "index": int(idx),
-                "class_name": self.idx_to_class.get(int(idx), str(int(idx))),
-                "confidence": float(value),
-            }
-            for value, idx in zip(values.cpu().tolist(), indices.cpu().tolist())
-        ]
-        best = top[0]
-        return {
-            "index": best["index"],
-            "class_name": best["class_name"],
-            "confidence": best["confidence"],
-            "topk": top,
-        }
+        probabilities = torch.softmax(logits, dim=1).reshape(len(images), variants_per_image, self.num_classes).mean(dim=1)
+        values, indices = torch.topk(probabilities, k=k, dim=1)
+        results: list[dict[str, Any]] = []
+        for row_values, row_indices in zip(values.cpu().tolist(), indices.cpu().tolist()):
+            top = [
+                {
+                    "index": int(idx),
+                    "class_name": self.idx_to_class.get(int(idx), str(int(idx))),
+                    "confidence": float(value),
+                }
+                for value, idx in zip(row_values, row_indices)
+            ]
+            best = top[0]
+            results.append(
+                {
+                    "index": best["index"],
+                    "class_name": best["class_name"],
+                    "confidence": best["confidence"],
+                    "topk": top,
+                }
+            )
+        return results
+
+    @torch.no_grad()
+    def predict_one(self, item: str | Path | Image.Image | np.ndarray, topk: int | None = None) -> dict[str, Any]:
+        img = to_pil_image(item)
+        return self._predict_images([img], topk=topk)[0]
 
     def predict(self, items: Any, topk: int | None = None) -> dict[str, Any] | list[dict[str, Any]]:
         if isinstance(items, (str, Path, Image.Image, np.ndarray)):
             return self.predict_one(items, topk=topk)
         if isinstance(items, (list, tuple)):
-            return [self.predict_one(item, topk=topk) for item in items]
+            return self._predict_images([to_pil_image(item) for item in items], topk=topk)
         raise TypeError(f"Unsupported input type: {type(items).__name__}. Expected single image input or list/tuple batch.")
 
 

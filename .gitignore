@@ -1,0 +1,7 @@
+data/
+outputs/
+*.pt
+__pycache__/
+.pytest_cache/
+*.py[cod]
+scripts/*.log

@@ -8,6 +8,7 @@ import pytest
 import torch
 
 from augmentations import CORRUPTION_NAMES, RandomBadWeather, apply_corruption
+from ensemble_analysis import fuse_probabilities, probability_metrics
 from datasets import (
     CSVImageDataset,
     FolderImageDataset,
@@ -148,3 +149,14 @@ def test_inference_predict_pil_numpy_path(tmp_path: Path) -> None:
     assert len(batch[0]["topk"]) == 2
     with pytest.raises(TypeError):
         clf.predict({"bad": "input"})
+
+
+def test_ensemble_probability_alignment_and_metrics() -> None:
+    first = np.asarray([[0.8, 0.2], [0.3, 0.7]], dtype=np.float64)
+    second = np.asarray([[0.4, 0.6], [0.9, 0.1]], dtype=np.float64)
+    fused = fuse_probabilities([first, second], [0.8, 0.2])
+    assert np.allclose(fused.sum(axis=1), 1.0)
+    assert fused.argmax(axis=1).tolist() == [0, 1]
+    assert probability_metrics(np.asarray([0, 1]), fused, 2)["macro_f1"] == pytest.approx(1.0)
+    with pytest.raises(ValueError):
+        fuse_probabilities([first, np.zeros((3, 2))], [0.5, 0.5])

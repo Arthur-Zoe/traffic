@@ -42,7 +42,10 @@ data/gtsrb/
 - 文件夹按类别组织的数据集
 - 无标签图片目录
 - 字符串类别稳定映射
+- `0..N-1` 数字标签保持原索引；1-based 或非连续数字标签会压缩为连续内部索引
 - 导出 `class_to_idx.json`、`idx_to_class.json`
+
+训练时模型分类头始终使用连续的 `0..N-1` 索引。对 1-based、稀疏数字或字符串官方标签，提交前必须用 checkpoint 的 `idx_to_class.json` 将预测索引还原为原始标签，不能直接把内部 index 当成官方标签。
 
 ## 已有模型
 
@@ -61,6 +64,19 @@ outputs/gtsrb_effb0_weather_v2_seed42/best.pt
 | v2 强天气增强 | 0.997229 | 0.996303 | 约 0.9479 | 约 0.9454 |
 
 当前默认推荐 v2，但比赛当天必须重新用官方数据评估。
+
+## 2026-07-10 实测基准
+
+本机 RTX 4050 Laptop（PyTorch 2.5.1+cu124）上，使用统一 `evaluate.py`、GTSRB Test、strong random-stress（3 repeats）实测：
+
+| 模型 | Clean Acc | Clean Macro-F1 | Strong Stress Acc | Strong Stress Macro-F1 | 推荐用途 |
+|---|---:|---:|---:|---:|---|
+| v1 | 0.996675 | 0.996366 | 0.917155 +/- 0.001533 | 0.899001 +/- 0.000889 | clean baseline |
+| v2 | 0.997229 | 0.996303 | 0.947585 +/- 0.000360 | 0.943970 +/- 0.000597 | severe-weather / default |
+| v5_img256 | 0.995249 | 0.991154 | 0.934627 +/- 0.000878 | 0.927409 +/- 0.001713 | high-resolution experiment |
+| v6_mobile | 0.995566 | 0.992696 | 0.910847 +/- 0.000807 | 0.896003 +/- 0.002407 | fast-inference |
+
+完整的逐 corruption 结果、速度和选择规则见 `RESULTS.md`。本轮没有训练 v3/v4：v2 同时取得最佳 clean 与强天气结果，v5 没有显示高分辨率优势，v4 缺少明确的极端增强收益证据。
 
 ## 检查数据集
 

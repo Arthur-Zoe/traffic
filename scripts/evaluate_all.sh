@@ -4,6 +4,8 @@ set -euo pipefail
 CKPTS=(
   "outputs/gtsrb_effb0_weather_seed42/best.pt"
   "outputs/gtsrb_effb0_weather_v2_seed42/best.pt"
+  "outputs/gtsrb_v5_img256_seed42/best.pt"
+  "outputs/gtsrb_v6_mobile_seed42/best.pt"
 )
 
 for ckpt in "${CKPTS[@]}"; do

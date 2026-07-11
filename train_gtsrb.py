@@ -214,6 +214,7 @@ def _checkpoint_dict(
     class_to_idx: dict[str, int],
     idx_to_class: dict[int, str],
     num_classes: int,
+    no_improve: int,
 ) -> dict[str, Any]:
     train_config = vars(args).copy()
     return {
@@ -224,6 +225,7 @@ def _checkpoint_dict(
         "epoch": epoch,
         "best_macro_f1": best_f1,
         "best_acc": best_acc,
+        "no_improve": no_improve,
         "val_acc": val_acc,
         "val_macro_f1": val_f1,
         "mean": IMAGENET_MEAN,
@@ -291,6 +293,7 @@ def train(args: argparse.Namespace) -> None:
     start_epoch = 1
     best_f1 = -1.0
     best_acc = -1.0
+    no_improve = 0
     if args.resume:
         ckpt = torch.load(args.resume, map_location=device)
         info = load_state_flexible(model, checkpoint_state_dict(ckpt))
@@ -304,6 +307,7 @@ def train(args: argparse.Namespace) -> None:
         start_epoch = int(ckpt.get("epoch", 0)) + 1
         best_f1 = float(ckpt.get("best_macro_f1", ckpt.get("val_macro_f1", -1.0)))
         best_acc = float(ckpt.get("best_acc", ckpt.get("val_acc", -1.0)))
+        no_improve = int(ckpt.get("no_improve", 0))
         print(f"[RESUME] start_epoch={start_epoch}, best_f1={best_f1:.6f}")
     elif args.init_checkpoint:
         ckpt = torch.load(args.init_checkpoint, map_location=device)
@@ -322,7 +326,6 @@ def train(args: argparse.Namespace) -> None:
     export_class_mapping(class_to_idx, output_dir)
     (output_dir / "train_config.json").write_text(json.dumps(vars(args), ensure_ascii=False, indent=2), encoding="utf-8")
 
-    no_improve = 0
     for epoch in range(start_epoch, args.epochs + 1):
         model.train()
         running_loss = 0.0
@@ -357,6 +360,13 @@ def train(args: argparse.Namespace) -> None:
             f"[Epoch {epoch:03d}] train_loss={train_loss:.5f} train_acc={train_acc:.5f} "
             f"val_acc={val_acc:.5f} val_macro_f1={val_f1:.5f}"
         )
+        improved = val_f1 > best_f1
+        if improved:
+            best_f1 = val_f1
+            best_acc = val_acc
+            no_improve = 0
+        else:
+            no_improve += 1
         ckpt = _checkpoint_dict(
             model,
             args,
@@ -371,23 +381,17 @@ def train(args: argparse.Namespace) -> None:
             class_to_idx,
             idx_to_class,
             num_classes,
+            no_improve,
         )
         torch.save(ckpt, output_dir / "last.pt")
         if args.save_every_epoch:
             torch.save(ckpt, output_dir / f"epoch_{epoch:03d}.pt")
-        if val_f1 > best_f1:
-            best_f1 = val_f1
-            best_acc = val_acc
-            ckpt["best_macro_f1"] = best_f1
-            ckpt["best_acc"] = best_acc
+        if improved:
             torch.save(ckpt, output_dir / "best.pt")
-            no_improve = 0
             print(f"[SAVE] best.pt  val_acc={best_acc:.5f}, val_macro_f1={best_f1:.5f}")
-        else:
-            no_improve += 1
-            if args.early_stopping_patience is not None and no_improve >= args.early_stopping_patience:
-                print(f"[EARLY STOP] patience={args.early_stopping_patience}, best_f1={best_f1:.6f}")
-                break
+        elif args.early_stopping_patience is not None and no_improve >= args.early_stopping_patience:
+            print(f"[EARLY STOP] patience={args.early_stopping_patience}, best_f1={best_f1:.6f}")
+            break
 
     print("训练完成")
     print("Best val_acc:", best_acc)
